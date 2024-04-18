@@ -1,0 +1,466 @@
+---
+title: "Match_waveform"
+output: html_document
+date: "2023-09-08"
+---
+```{r}
+library(readxl)
+library(openxlsx)
+library(dplyr)
+library(stringr)
+library(lubridate)
+library(hms)
+library(DescTools)
+library(data.table)
+library(stringr)
+options(warn=-1) 
+```
+
+```{r}
+# get the list of file path
+files_list <- data.frame(list.files(path = "/Volumes/Drive/mimic3wdb-matched-1.0.physionet.org/matched/matched",
+                            recursive = TRUE,
+                            pattern = "\\.hea$",
+                            full.names = TRUE))
+
+colnames(files_list) <- 'FILES_LIST'
+```
+
+```{r}
+# remove layout files
+files_list_new <- data.frame(files_list[!grepl("layout", files_list$FILES_LIST),])
+colnames(files_list_new) <- 'FILES_LIST'
+```
+
+```{r}
+files_list_new2 <- data.frame(files_list[!grepl("layout", files_list$FILES_LIST),])
+```
+
+```{r}
+temp_data <- read.table(files_list_new$FILES_LIST[5], header = FALSE, sep = ",")
+temp_subject_id <- substr(temp_data[1,], 2, 7)
+temp_colon_idx <- str_locate(temp_data[1,], ":")[1]
+temp_start_time <- data.frame(substr(temp_data[1,], temp_colon_idx-2, nchar(temp_data[1,])))
+colnames(temp_start_time) <- 'START_TIME'
+temp_space_idx <- str_locate_all(temp_data[1,], " ")[[1]]
+temp_sample <- substr(temp_data[1,], temp_space_idx[3,][1]+1, temp_space_idx[4,][1]-1)
+
+temp_freq <- substr(temp_data[1,], temp_space_idx[2,][1]+1, temp_space_idx[3,][1]-1)
+# if the file has frequency as 0.01666667/125 
+if (temp_freq < 1){
+  temp_insec <- as.numeric(temp_sample) / (1/60)
+  temp_duration_hr <- temp_insec %/% 3600
+  temp_duration_min <- (temp_insec - temp_duration_hr * 3600) %/% 60
+  temp_duration_sec <- temp_insec - temp_duration_hr * 3600 - temp_duration_min * 60
+  temp_duration <- hours(temp_duration_hr) + minutes(temp_duration_min) + seconds(temp_duration_sec)
+} else { # otherwise, the frequency is as 1 sample/sec, 125 samples/sec
+  temp_insec <- as.numeric(temp_sample) / as.numeric(temp_freq)
+  temp_duration_hr <- temp_insec %/% 3600
+  temp_duration_min <- (temp_insec - temp_duration_hr * 3600) %/% 60
+  temp_duration_sec <- temp_insec - temp_duration_hr * 3600 - temp_duration_min * 60
+  temp_duration <- hours(temp_duration_hr) + minutes(temp_duration_min) + seconds(temp_duration_sec) 
+}
+
+temp_start_time_hour <- as.numeric(sub("\\:.*", "", temp_start_time[1,1]))
+temp_start_time_min <- as.numeric(gsub(".*:(.*)\\:.*", "\\1", temp_start_time[1,1]))
+temp_start_time_sec <- as.numeric(sub(".*:", "", temp_start_time[1,1]))
+
+temp_end_time <- sub("\\S+ ", "", as.character(strptime("0:0:0", "%H:%M:%S") + hours(temp_start_time_hour) + minutes(temp_start_time_min) + seconds(temp_start_time_sec) + hours(temp_duration_hr) + minutes(temp_duration_min) + seconds(temp_duration_sec)))
+
+temp_waveform_data <- cbind(temp_subject_id, temp_start_time, temp_duration, temp_end_time)
+
+```
+
+```{r}
+waveform_date <- data.frame(matrix(ncol = 2, nrow = 0))
+# create data frame for waveform: subject ID, start date
+for (i in 1:nrow(files_list_new)){
+  temp_subject_id <- substr(files_list_new$FILES_LIST[i], 73, 78)
+  # find the year month date starting time of the patient
+  for (j in 1:nrow(files_list_new)){
+    temp_file_subject_id <- substr(files_list_new$FILES_LIST[j], 81, 86)
+    
+    if (temp_file_subject_id == temp_subject_id) {
+      temp_date <- substr(files_list_new$FILES_LIST[j], 88, 103)
+      
+      temp_waveform_date <- cbind(temp_subject_id, temp_date)
+      waveform_date <- rbind(waveform_date, temp_waveform_date)
+      
+    }
+  }
+  
+}
+
+```
+
+```{r}
+# create data frame for waveform: subject ID, start time, duration
+waveform_data <- data.frame(matrix(ncol = 3, nrow = 0))
+# for (i in 1:nrow(files_list_new)){
+for (i in 1:9){
+  temp_subject_id <- substr(files_list_new$FILES_LIST[i], 73, 78)
+
+  # find the hours minutes seconds starting time for the patient
+  temp_data <- read.table(files_list_new$FILES_LIST[i], header = FALSE, sep = ",")
+  
+  temp_colon_idx <- str_locate(temp_data[1,], ":")[1]
+  temp_start_time <- data.frame(substr(temp_data[1,], temp_colon_idx-2, nchar(temp_data[1,])))
+  colnames(temp_start_time) <- 'START_TIME'
+  
+  temp_space_idx <- str_locate_all(temp_data[1,], " ")[[1]]
+  temp_sample <- substr(temp_data[1,], temp_space_idx[3,][1]+1, temp_space_idx[4,][1]-1)
+  
+  temp_freq <- substr(temp_data[1,], temp_space_idx[2,][1]+1, temp_space_idx[3,][1]-1)
+  # if the file has frequency as 0.01666667/125 
+  if (temp_freq < 1){
+    temp_insec <- as.numeric(temp_sample) / (1/60)
+    temp_duration_hr <- temp_insec %/% 3600
+    temp_duration_min <- (temp_insec - temp_duration_hr * 3600) %/% 60
+    temp_duration_sec <- temp_insec - temp_duration_hr * 3600 - temp_duration_min * 60
+    temp_duration <- hours(temp_duration_hr) + minutes(temp_duration_min) + seconds(temp_duration_sec)
+  } 
+  # otherwise, the frequency is as 1 sample/sec, 125 samples/sec
+  else {
+    temp_insec <- as.numeric(temp_sample) / as.numeric(temp_freq)
+    temp_duration_hr <- temp_insec %/% 3600
+    temp_duration_min <- (temp_insec - temp_duration_hr * 3600) %/% 60
+    temp_duration_sec <- temp_insec - temp_duration_hr * 3600 - temp_duration_min * 60
+    temp_duration <- hours(temp_duration_hr) + minutes(temp_duration_min) + seconds(temp_duration_sec)
+  }
+  
+  temp_start_time_hour <- as.numeric(sub("\\:.*", "", temp_start_time[1,1]))
+  temp_start_time_min <- as.numeric(gsub(".*:(.*)\\:.*", "\\1", temp_start_time[1,1]))
+  temp_start_time_sec <- as.numeric(sub(".*:", "", temp_start_time[1,1]))
+
+  temp_end_time <- sub("\\S+ ", "", as.character(strptime("0:0:0", "%H:%M:%S") + hours(temp_start_time_hour) +
+                                                   minutes(temp_start_time_min) + seconds(temp_start_time_sec) + 
+                                                   temp_duration_hr + temp_duration_min + temp_duration_sec))  
+
+  temp_waveform_data <- cbind(temp_subject_id, temp_start_time, temp_duration, temp_end_time)
+    
+  waveform_data <- rbind(waveform_data, temp_waveform_data)
+}
+colnames(waveform_data) <- c('SUBJECT_ID', 'WAVEFORM_START_TIME', 'WAVEFORM_DURATION', 'WAVEFORM_END_TIME')
+```
+
+```{r}
+write.csv(waveform_data, "waveform_data.csv")
+```
+
+
+```{r}
+# update the subject ID
+for (i in 1:nrow(files_list_new)){
+  temp_subject_id <- substr(files_list_new$FILES_LIST[i], 73, 78)
+  waveform_data$SUBJECT_ID[i] <- temp_subject_id
+}
+
+```
+
+```{r}
+write.csv(waveform_data, 'waveform_data.csv')
+```
+
+```{r}
+waveform_data <- read.csv('waveform_data.csv')
+waveform_data <- waveform_data[-1]
+```
+
+```{r}
+# find if the waveform measures ABP
+ABP_data <- data.frame(matrix(ncol = 2, nrow = 0))
+for (i in 1:nrow(files_list_new)){
+  # find SUBJECT_ID
+  temp_subject_id <- substr(files_list_new$FILES_LIST[i], 73, 78)
+  
+  # find the ABP data
+  temp_data <- read.table(files_list_new$FILES_LIST[i], header = FALSE, sep = ",")
+  temp_measure <- substr(temp_data[,1], nchar(temp_data[,1])-2, nchar(temp_data[,1]))
+  contain_ABP <- grepl("ABP", temp_measure, fixed = TRUE)
+  contain_ABP_idx <- match("TRUE", contain_ABP)
+  
+  if (!is.na(contain_ABP_idx)) { # if ABP is measured for this patient
+    temp_ABP_data <- temp_data[contain_ABP_idx,]
+    temp_ABP_wID <- cbind(temp_subject_id, temp_ABP_data)
+    ABP_data <- rbind(ABP_data, temp_ABP_wID)
+  } 
+  
+}
+colnames(ABP_data) <- c('SUBJECT_ID', 'ABP_info')
+
+```
+
+```{r}
+write.csv(ABP_data, "ABP_data.csv")
+```
+
+```{r}
+ABP_data <- read.csv('ABP_data.csv')
+ABP_data <- ABP_data[-1]
+```
+
+```{r}
+waveform_data_new <- merge(waveform_data, ABP_data, by = "SUBJECT_ID")
+```
+
+
+
+
+
+```{r}
+data3000031n <- read.table('/Users/xiaofeiqu/physionet.org/files/mimic3wdb/1.0/30/3000031/3000031n.hea', header = FALSE, sep = ",")
+data3000031n <- data3000031n[1,1]
+
+waveform_subjectid <- data.frame(substr(data3000031n, 1, 7))
+colnames(waveform_subjectid) <- 'SUBJECT_ID'
+
+start_time_idx <- str_locate(data3000031n, ":")[1]
+waveform_start_time <- data.frame(substr(data3000031n, start_time_idx-2, nchar(data3000031n)))
+colnames(waveform_start_time) <- 'WAVEFORM_START_TIME'
+
+duration_idx <- str_locate_all(data3000031n, " ")[[1]]
+waveform_duration <- data.frame(substr(data3000031n, duration_idx[3,][1]+1, duration_idx[4,][1]-1))
+
+colnames(waveform_duration) <- 'WAVEFORM_DURATION'
+```
+
+
+```{r}
+# Load file
+admission <- read.csv('../MIMIC/ADMISSIONS.csv/ADMISSIONS.csv')
+icu_stays <- read.csv('../MIMIC/ICUSTAYS.csv/ICUSTAYS.csv')
+subject_tbl <- read.csv('../MIMIC/CARDIAC OUTPUT.csv/Temp5.MIMIC.Raw/subject_tbl.csv')
+```
+
+```{r}
+subject_id <- admission$SUBJECT_ID
+subject_id <- data.frame(subject_id)
+abp_start_time <- subject_tbl$ABP_STARTTIME
+abp_start_time <- as.data.frame.POSIXct(abp_start_time)
+abp_duration <- subject_tbl$ABP_DURATION
+abp_duration <- as.data.frame.POSIXct(abp_duration) 
+
+icu_admission_id <- icu_stays$ICUSTAY_ID
+icu_admission_id <- data.frame(icu_admission_id)
+icu_admission_start_time <- icu_stays$INTIME
+icu_admission_start_time <- data.frame(icu_admission_start_time)
+icu_admission_stop_time <- icu_stays$OUTTIME
+icu_admission_stop_time <- data.frame(icu_admission_stop_time)
+
+
+hospital_admission_id <- admission$HADM_ID
+hospital_admission_id <- data.frame(hospital_admission_id)
+hospital_admission_time <- admission$ADMITTIME
+hospital_admission_time <- data.frame(hospital_admission_time)
+hospital_discharge_time <- admission$DISCHTIME
+hospital_discharge_time <- data.frame(hospital_discharge_time)
+
+```
+
+```{r}
+# calculate abp stop time based on abp_stoptime <- abp_starttime + abp_duration
+abp_starttime <- strptime(abp_start_time$abp_start_time, "%d-%b-%Y %H:%M:%S")
+abp_dur_hour <- as.data.frame(sub("\\:.*", "", abp_duration$abp_duration))
+abp_dur_min <- do.call(rbind.data.frame, str_match_all(abp_duration$abp_duration, ":\\s*(.*?)\\s*:"))[2]
+abp_dur_sec <- abp_duration %>% mutate(abp_duration = substr(abp_duration, nchar(abp_duration)-1, nchar(abp_duration) ))
+colnames(abp_dur_hour) <- "ABP_DUR_HOUR"
+colnames(abp_dur_min) <- "ABP_DUR_MIN"
+colnames(abp_dur_sec) <- "ABP_DUR_SEC"
+
+abp_stop_time <- data.frame(matrix(nrow = nrow(abp_duration), ncol = 1))
+for (i in 1:nrow(abp_duration)){
+  temp_time <- abp_starttime[i] + hours(abp_dur_hour$ABP_DUR_HOUR[i]) + minutes(abp_dur_min$ABP_DUR_MIN[i]) + seconds(abp_dur_sec$ABP_DUR_SEC[i])
+  abp_stop_time[i,] <- as.character(temp_time)
+}
+colnames(abp_stop_time) <- "abp_stop_time"
+
+```
+
+```{r}
+# match SUBJECT_ID to find corresponding ABP_STARTTIME and ABP_STOPTIME
+abp_data <- data.frame(matrix(ncol = 3, nrow = 0))
+for (i in 1:nrow(subject_id)){
+  for (j in 1:nrow(subject_tbl)){ 
+    if (subject_id[i,] == subject_tbl$SUBJECT_ID[j]){
+      temp_abp <- cbind(subject_id[i,], abp_start_time[j,], abp_stop_time[j,])
+      abp_data <- rbind(abp_data, temp_abp)
+    } 
+
+  }
+}
+
+colnames(abp_data) <- c('SUBJECT_ID', 'ABP_STARTTIME', 'ABP_STOPTIME')
+
+write.csv(abp_data, 'abp_data.csv')
+```
+
+```{r}
+# match SUBJECT_ID to find corresponding ICU admission ID, start time ICU admission, and stop time ICU admission 
+icu_data <- data.frame(matrix(ncol = 4, nrow = 0))
+for (i in 1:nrow(subject_id)){
+  for (j in 1:nrow(icu_stays)){ 
+    if (subject_id[i,] == icu_stays$SUBJECT_ID[j]){
+      temp_icu <- cbind(subject_id[i,], icu_admission_id[j,], icu_admission_start_time[j,], icu_admission_stop_time[j,])
+      icu_data <- rbind(icu_data, temp_icu)
+    } 
+
+  }
+}
+
+colnames(icu_data) <- c('SUBJECT_ID', 'ICUSTAY_ID', 'ICU_INTIME', 'ICU_OUTTIME')
+
+write.csv(icu_data, 'icu_data.csv')
+```
+
+```{r}
+# match SUBJECT_ID to find corresponding hospital admission ID, hospital admission time, and hospital discharge time
+hospital_data <- data.frame(matrix(ncol = 4, nrow = 0))
+for (i in 1:nrow(subject_id)){
+  for (j in 1:nrow(admission)){ 
+    if (subject_id[i,] == admission$SUBJECT_ID[j]){
+      temp_hospital <- cbind(subject_id[i,], hospital_admission_id[j,], hospital_admission_time[j,], hospital_discharge_time[j,])
+      hospital_data <- rbind(hospital_data, temp_hospital)
+    } 
+
+  }
+}
+
+colnames(hospital_data) <- c('SUBJECT_ID', 'HADM_ID', 'ADMITTIME', 'DISCHTIME')
+
+write.csv(hospital_data, 'hospital_data.csv')
+```
+
+```{r}
+# load abp, icu, hospital data that are created from codes above
+abp_data <- read.csv('abp_data.csv')
+icu_data <- read.csv('icu_data.csv')
+hospital_data <- read.csv('hospital_data.csv')
+abp_data <- abp_data[,2:4]
+icu_data <- icu_data[,2:5]
+hospital_data <- hospital_data[,2:5]
+```
+
+
+```{r}
+# merge hospital data and icu data through subject ID
+matched_data_hospital_icu <- merge(hospital_data, icu_data, by= "SUBJECT_ID")
+
+```
+
+```{r}
+matched_data <- merge(matched_data_hospital_icu, abp_data, by = "SUBJECT_ID")
+matched_data$ABP_STARTTIME <- as.character(strptime(matched_data$ABP_STARTTIME, "%d-%b-%Y %H:%M:%S"))
+
+```
+
+```{r}
+# check whether ABP time interval and ICU time interval overlap
+overlap_interval <- data.frame(matrix(ncol = 1, nrow = 0))
+for (i in 1:nrow(matched_data)){
+  abp_interval <- c(matched_data$ABP_STARTTIME[i], matched_data$ABP_STOPTIME[i])
+  icu_interval <- c(matched_data$ICU_INTIME[i], matched_data$ICU_OUTTIME[i])
+  overlap_interval_insec <- Overlap(as.numeric(strptime(abp_interval, "%Y-%m-%d %H:%M:%S")),
+                                    as.numeric(strptime(icu_interval, "%Y-%m-%d %H:%M:%S")))
+  temp_overlap_interval <- as.character(seconds_to_period(overlap_interval_insec)) 
+  overlap_interval <- rbind(overlap_interval, temp_overlap_interval)
+}
+colnames(overlap_interval) <- 'OVERLAP_INTERVAL'
+```
+
+```{r}
+Overlap(as.numeric(strptime(c(matched_data$ABP_STARTTIME[1], matched_data$ABP_STOPTIME[1]), "%Y-%m-%d %H:%M:%S")), as.numeric(strptime(c(matched_data$ICU_INTIME[1], matched_data$ICU_OUTTIME[1]), "%Y-%m-%d %H:%M:%S")))
+
+```
+
+
+```{r}
+# calculate ABP start time - ICU admission start time 
+time_diff <- data.frame(as_hms(difftime(matched_data$ABP_STARTTIME, matched_data$ICU_INTIME)))
+colnames(time_diff) <- 'TIME_DIFF'
+#########################TO DO
+# bind time_diff to matched_data
+
+```
+
+```{r}
+matched_waveform <- data.frame(admission$SUBJECT_ID, admission$HADM_ID, admission$DIAGNOSIS)
+colnames(matched_waveform) <- c('SUBJECT_ID', 'HADM_ID', 'DIAGNOSIS')
+
+```
+
+```{r}
+matched_data <- data.frame(matrix(ncol = 9, nrow = 0))
+for (i in 1:nrow(abp_data)){
+  for (j in 1:nrow(icu_data)){
+    for (k in 1:nrow(hospital_data)){
+      if (abp_data$SUBJECT_ID[i] == icu_data$SUBJECT_ID[j] & abp_data$SUBJECT_ID[i] == hospital_data$SUBJECT_ID[k]){
+        temp_matched <- cbind(abp_data[i,], icu_data[j,2:ncol(icu_data)], hospital_data[k,2:ncol(hospital_data)])
+        matched_data <- rbind(matched_data, temp_matched)
+      }
+    }
+  }
+}
+
+colnames(matched_data) <- c('SUBJECT_ID', 'ABP_STARTTIME', 'ABP_STOPTIME', 'ICUSTAY_ID', 'ICU_INTIME', 'ICU_OUTTIME', 'HADM_ID', 'ADMITTIME', 'DISCHTIME')
+
+write.csv(matched_data, 'matched_data.csv')
+
+```
+
+```{r}
+# calculate abp stop time based on abp_stoptime <- abp_starttime + abp_duration
+abp_start_hour <- abp_starttime %>% mutate(abp_starttime = substr(abp_starttime, 13, 14))
+abp_start_min <- abp_starttime %>% mutate(abp_starttime = substr(abp_starttime, 16, 17))
+abp_start_sec <- abp_starttime %>% mutate(abp_starttime = substr(abp_starttime, 19, 20))
+colnames(abp_start_hour) <- "ABP_START_HOUR"
+colnames(abp_start_min) <- "ABP_START_MIN"
+colnames(abp_start_sec) <- "ABP_START_SEC"
+
+abp_dur_hour <- as.data.frame(sub("\\:.*", "", abp_duration$abp_duration))
+abp_dur_min <- do.call(rbind.data.frame, str_match_all(abp_duration$abp_duration, ":\\s*(.*?)\\s*:"))[2]
+abp_dur_sec <- abp_duration %>% mutate(abp_duration = substr(abp_duration, nchar(abp_duration)-1, nchar(abp_duration) ))
+colnames(abp_dur_hour) <- "ABP_DUR_HOUR"
+colnames(abp_dur_min) <- "ABP_DUR_MIN"
+colnames(abp_dur_sec) <- "ABP_DUR_SEC"
+
+abp_stop_sec <- as.data.frame(as.numeric(abp_start_sec$ABP_START_SEC) + as.numeric(abp_dur_sec$ABP_DUR_SEC))
+colnames(abp_stop_sec) <- "ABP_STOP_SEC"
+
+abp_stop_min <- as.data.frame(as.numeric(abp_start_min$ABP_START_MIN) + as.numeric(abp_dur_min$ABP_DUR_MIN))
+colnames(abp_stop_min) <- "ABP_STOP_MIN"
+
+abp_stop_hour <- as.data.frame(as.numeric(abp_start_hour$ABP_START_HOUR) + as.numeric(abp_dur_hour$ABP_DUR_HOUR))
+colnames(abp_stop_hour) <- "ABP_STOP_HOUR"
+
+idx_sec <- which(abp_stop_sec > 60)
+for (i in 1:length(idx_sec)){
+  change_idx <- idx_sec[i]
+  abp_stop_sec[change_idx,] <- abp_stop_sec[change_idx,] - 60
+  abp_stop_min[change_idx,] <- abp_stop_min[change_idx,] + 1
+}
+
+idx_min <- which(abp_stop_min > 60)
+for (i in 1:length(idx_min)){
+  change_idx <- idx_min[i]
+  abp_stop_min[change_idx,] <- abp_stop_min[change_idx,] - 60
+  abp_stop_hour[change_idx,] <- abp_stop_hour[change_idx,] + 1
+}
+
+idx_hour <- which (abp_stop_hour > 24)
+for (i in 1:length(idx_hour)){
+  change_idx <- idx_hour[i]
+  multi_hour <- abp_stop_hour[change_idx,] %/% 24
+  abp_stop_hour[change_idx,] <- abp_stop_hour[change_idx,] - multi_hour * 24
+}
+
+```
+
+
+
+
+
+
+
+
+
+

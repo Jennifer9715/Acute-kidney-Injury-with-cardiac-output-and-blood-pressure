@@ -1,0 +1,136 @@
+---
+title: "Creatinine"
+output: html_document
+date: "2023-08-19"
+---
+```{r}
+library(readxl)
+library(openxlsx)
+library(dplyr)
+library(stringr)
+library(lubridate)
+library(hms)
+library(DescTools)
+library(data.table)
+```
+
+```{r}
+# Load file
+d_labitems <- read.csv('../MIMIC/D_LABITEMS.csv/D_LABITEMS.csv')
+lab_events <- read.csv('../MIMIC/LABEVENTS.csv/LABEVENTS.csv')
+admission <- read.csv('../MIMIC/ADMISSIONS.csv/ADMISSIONS.csv')
+icu_stays <- read.csv('../MIMIC/ICUSTAYS.csv/ICUSTAYS.csv')
+
+```
+
+```{r}
+# find the item ID that represents serum creatinine
+creatinine_idx <- which(d_labitems$LABEL == "Creatinine, Serum")
+creatinine_itemid <- d_labitems$ITEMID[creatinine_idx]
+```
+
+```{r}
+# filter out the subjects that has creatinine recordings 
+subject_idx <- which(lab_events$ITEMID == 50912)
+creatinine_data <- lab_events[subject_idx, ]
+creatinine_data <- creatinine_data[, -which(names(creatinine_data) == 'ROW_ID')]
+rownames(creatinine_data) <- 1:nrow(creatinine_data)
+write.csv(creatinine_data, "creatinine_data.csv")
+```
+
+```{r}
+# filter out the subjects that has serum creatinine recordings
+subject_idx <- which(lab_events$ITEMID == creatinine_itemid)
+creatinine_serum_data <- lab_events[subject_idx, ]
+creatinine_serum_data <- creatinine_serum_data[, -which(names(creatinine_serum_data) == 'ROW_ID')]
+rownames(creatinine_serum_data) <- 1:nrow(creatinine_serum_data)
+write.csv(creatinine_serum_data, "creatinine_serum_data.csv")
+```
+
+```{r}
+# remove non-numeric values in creatinine measurements
+# calculate mean, SD, range of creatinine measurements
+creatinine_nonval_idx <- which(data.frame(is.na(as.numeric(creatinine_data$VALUE)))[,1] == "TRUE")
+mean_creatinine <- mean(as.numeric(creatinine_data[-creatinine_nonval_idx,]$VALUE))
+std_creatinine <- sd(as.numeric(creatinine_data[-creatinine_nonval_idx,]$VALUE))
+range_creatinine <- range(as.numeric(creatinine_data[-creatinine_nonval_idx,]$VALUE))
+
+# calculate mean, SD, range of serum creatinine measurements
+mean_creatinine_serum <- mean(as.numeric(creatinine_serum_data$VALUE)) 
+std_creatinine_serum <- sd(as.numeric(creatinine_serum_data$VALUE))
+range_creatinine_serum <- range(as.numeric(creatinine_serum_data$VALUE))
+```
+
+
+```{r}
+# filter out the admission start and discharge time for the patients who has creatinine and serum creatinine recordings
+hospital_icu_data <- merge(admission[c("SUBJECT_ID", "HADM_ID", "ADMITTIME", "DISCHTIME")], icu_stays[c("SUBJECT_ID", "ICUSTAY_ID", "INTIME", "OUTTIME")],by = "SUBJECT_ID")
+
+# creatinine
+creatinine_data_new <- merge(hospital_icu_data, creatinine_data, by = "SUBJECT_ID")
+colnames(creatinine_data_new) <- c( "SUBJECT_ID", "HADM_ID_admission", "ADMITTIME", "DISCHTIME", "ICUSTAY_ID", "INTIME", "OUTTIME", "HADM_ID_creatinine", "ITEMID_creatinine", "CHARTTIME_creatinine", "VALUE_creatinine", "VALUENUM_creatinine", "VALUEUOM_creatinine", "FLAG_creatinine")
+write.csv(creatinine_data_new, "creatinine_data_new.csv")
+
+# serum creatinine
+creatinine_serum_data_new <- merge(hospital_icu_data, creatinine_serum_data, by = "SUBJECT_ID")
+colnames(creatinine_serum_data_new) <- c( "SUBJECT_ID", "HADM_ID_admission", "ADMITTIME", "DISCHTIME", "ICUSTAY_ID", "INTIME", "OUTTIME", "HADM_ID_creatinine_serum", "ITEMID_creatinine_serum", "CHARTTIME_creatinine_serum", "VALUE_creatinine_serum", "VALUENUM_creatinine_serum", "VALUEUOM_creatinine_serum", "FLAG_creatinine_serum")
+write.csv(creatinine_serum_data_new, "creatinine_serum_data_new.csv")
+
+```
+
+```{r}
+# find the creatinine and serum creatinine recording time that's the closest to ICU admission (within 4 hours, before and after)
+creatinine_final <- 
+  creatinine_data_new %>% mutate(CHARTTIME_creatinine = as.POSIXct(creatinine_data_new$CHARTTIME_creatinine, format = '%Y-%m-%d %H:%M:%S'), 
+                                 INTIME = as.POSIXct(creatinine_data_new$INTIME, format = '%Y-%m-%d %H:%M:%S') - hours(4), 
+                                 OUTTIME = as.POSIXct(creatinine_data_new$OUTTIME, format = '%Y-%m-%d %H:%M:%S') + hours(4), 
+                                 within_range_creatinine = as.integer(CHARTTIME_creatinine >= INTIME & CHARTTIME_creatinine <= OUTTIME))
+
+creatinine_serum_final <- 
+  creatinine_serum_data_new %>% mutate(
+    CHARTTIME_creatinine_serum = as.POSIXct(creatinine_serum_data_new$CHARTTIME_creatinine_serum, format = '%Y-%m-%d %H:%M:%S'),
+    INTIME = as.POSIXct(creatinine_serum_data_new$INTIME, format = '%Y-%m-%d %H:%M:%S') - hours(4),
+    OUTTIME = as.POSIXct(creatinine_serum_data_new$OUTTIME, format = '%Y-%m-%d %H:%M:%S') + hours(4),
+    within_range_creatinine_serum = as.integer(CHARTTIME_creatinine_serum >= INTIME & CHARTTIME_creatinine_serum <= OUTTIME))
+
+
+write.csv(creatinine_final, "creatinine_final.csv")
+write.csv(creatinine_serum_final, "creatinine_serum_final.csv")
+
+```
+
+```{r}
+creatinine_final <- read.csv("creatinine_final.csv")
+creatinine_final <- creatinine_final[-1]
+
+creatinine_serum_final <- read.csv("creatinine_serum_final.csv")
+creatinine_serum_final <- creatinine_serum_final[-1]
+
+```
+
+
+```{r}
+creatinine_data_final <- merge(creatinine_final, creatinine_serum_final, by = "SUBJECT_ID", all = T)
+write.csv(creatinine_data_final, "creatinine_and_serum_final.csv")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

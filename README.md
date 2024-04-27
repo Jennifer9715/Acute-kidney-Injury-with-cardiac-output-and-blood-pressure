@@ -19,11 +19,6 @@ Code:
 * the code generates "combine_creatinine_data.csv"
 
 
-### Executing program
-
-* How to run the program
-* Step-by-step bullets
-
 ## Authors
 
 Contributors names and contact info

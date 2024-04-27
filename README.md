@@ -6,7 +6,7 @@ This project is to manage the MIMIC-III dataset to engineer the waveform cohort 
 
 ## Description
 
-This 
+This repository includes code, tables, and figures. 
 
 ## Getting Started
 

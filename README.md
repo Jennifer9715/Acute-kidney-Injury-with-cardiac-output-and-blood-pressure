@@ -26,4 +26,4 @@ Code:
 
 Contributors names and contact info
 
-* Xiaofei qu
+* Xiaofei Qu

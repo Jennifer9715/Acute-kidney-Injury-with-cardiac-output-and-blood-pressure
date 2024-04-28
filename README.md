@@ -21,6 +21,10 @@ Code:
 "load_store_data.m"
 * the code includes loading waveform data, filtering out the ones with arterial blood pressure measurements(ABP or ART), store them as ".mat" file
 
+"Match_waveform_to_clinical.m"
+* the code get the patient ID for patients who has arterial blood pressure measurements
+* the code generates "subject_id_waveform.csv"
+
 
 ## Authors
 

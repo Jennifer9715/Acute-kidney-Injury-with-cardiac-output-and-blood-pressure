@@ -23,8 +23,8 @@ Code:
 
 "Match_waveform_to_clinical.m"
 * the code get the patient ID for patients who has arterial blood pressure measurements
-* the code filters the hospital admissions and ICU stays information for patients who has arterial blood pressure measurements
-* the code generates "subject_id_waveform.csv", "waveform_hospital.csv", "waveform_icu.csv"
+* the code filters the hospital admissions, ICU stays, and patient information for patients who has arterial blood pressure measurements
+* the code generates "subject_id_waveform.csv", "waveform_hospital.csv", "waveform_icu.csv", "waveform_patient.csv"
   
 
 

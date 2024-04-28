@@ -18,6 +18,9 @@ Code:
 * the code includes the combined table which includes both creatinine measurements, hospital admissions, ICU stays, and whether the measurement for creatinine was taken within the ICU admission's range
 * the code generates "combine_creatinine_data.csv"
 
+"load_store_data.m"
+* the code includes loading waveform data, filtering out the ones with arterial blood pressure measurements(ABP or ART), store them as ".mat" file
+
 
 ## Authors
 

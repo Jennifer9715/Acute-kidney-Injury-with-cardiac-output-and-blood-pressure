@@ -48,6 +48,49 @@ write.csv(creatinine_serum_data, "creatinine_serum_data.csv")
 ```
 
 ```{r}
+creatinine_freq <- data.frame(table(creatinine_data$SUBJECT_ID))
+colnames(creatinine_freq) <- c('SUBJECT_ID', 'creatinine_FREQ')
+
+creatinine_serum_freq <- data.frame(table(creatinine_serum_data$SUBJECT_ID))
+colnames(creatinine_serum_freq) <- c('SUBJECT_ID', 'creatinine_serum_FREQ')
+```
+
+```{r}
+combine_creatinine_data <- rbind(creatinine_data, creatinine_serum_data)
+```
+
+```{r}
+write.csv(combine_creatinine_data, "combine_creatinine_data.csv")
+```
+
+```{r}
+combine_creatinine_data <- read.csv("combine_creatinine_data.csv")
+combine_creatinine_data <- combine_creatinine_data[-1]
+```
+
+```{r}
+combine_creatinine_freq <- data.frame(table(combine_creatinine_data$SUBJECT_ID))
+colnames(combine_creatinine_freq) <- c('SUBJECT_ID', 'creatinine_FREQ')
+```
+
+```{r}
+id_808_idx <- which(as.numeric(combine_creatinine_data$VALUE) > 50)
+combine_creatinine_data$VALUE[id_808_idx] <- 'N/A'
+combine_creatinine_data$VALUENUM[id_808_idx] <- 'N/A'
+
+```
+
+```{r}
+# remove non-numeric values in combine creatinine measurements
+# calculate mean, SD, range of creatinine measurements
+creatinine_nonval_idx <- which(data.frame(is.na(as.numeric(combine_creatinine_data$VALUE)))[,1] == "TRUE")
+mean_creatinine <- mean(as.numeric(combine_creatinine_data[-creatinine_nonval_idx,]$VALUE))
+std_creatinine <- sd(as.numeric(combine_creatinine_data[-creatinine_nonval_idx,]$VALUE))
+range_creatinine <- range(as.numeric(combine_creatinine_data[-creatinine_nonval_idx,]$VALUE))
+```
+
+
+```{r}
 # remove non-numeric values in creatinine measurements
 # calculate mean, SD, range of creatinine measurements
 creatinine_nonval_idx <- which(data.frame(is.na(as.numeric(creatinine_data$VALUE)))[,1] == "TRUE")
@@ -66,6 +109,24 @@ range_creatinine_serum <- range(as.numeric(creatinine_serum_data$VALUE))
 # filter out the admission start and discharge time for the patients who has creatinine and serum creatinine recordings
 hospital_icu_data <- merge(admission[c("SUBJECT_ID", "HADM_ID", "ADMITTIME", "DISCHTIME")], icu_stays[c("SUBJECT_ID", "ICUSTAY_ID", "INTIME", "OUTTIME")],by = "SUBJECT_ID")
 
+# combine creatinine 
+combine_creatinine_data_new <- merge(hospital_icu_data, combine_creatinine_data, by = "SUBJECT_ID")
+colnames(combine_creatinine_data_new) <- c( "SUBJECT_ID", "HADM_ID_admission", "ADMITTIME", "DISCHTIME", "ICUSTAY_ID", "INTIME", "OUTTIME", "HADM_ID_creatinine", "ITEMID_creatinine", "CHARTTIME_creatinine", "VALUE_creatinine", "VALUENUM_creatinine", "VALUEUOM_creatinine", "FLAG_creatinine")
+write.csv(combine_creatinine_data_new, "combine_creatinine_data_new.csv")
+```
+
+```{r}
+# find the combine creatinine recording time that's the closest to ICU admission (within 4 hours, before and after)
+combine_creatinine_final <- 
+  combine_creatinine_data_new %>% mutate(CHARTTIME_creatinine = as.POSIXct(combine_creatinine_data_new$CHARTTIME_creatinine, format = '%Y-%m-%d %H:%M:%S'), 
+                                 INTIME = as.POSIXct(combine_creatinine_data_new$INTIME, format = '%Y-%m-%d %H:%M:%S') - hours(4), 
+                                 OUTTIME = as.POSIXct(combine_creatinine_data_new$OUTTIME, format = '%Y-%m-%d %H:%M:%S') + hours(4), 
+                                 within_range_creatinine = as.integer(CHARTTIME_creatinine >= INTIME & CHARTTIME_creatinine <= OUTTIME))
+
+write.csv(combine_creatinine_final, "combine_creatinine_final.csv")
+```
+
+```{r}
 # creatinine
 creatinine_data_new <- merge(hospital_icu_data, creatinine_data, by = "SUBJECT_ID")
 colnames(creatinine_data_new) <- c( "SUBJECT_ID", "HADM_ID_admission", "ADMITTIME", "DISCHTIME", "ICUSTAY_ID", "INTIME", "OUTTIME", "HADM_ID_creatinine", "ITEMID_creatinine", "CHARTTIME_creatinine", "VALUE_creatinine", "VALUENUM_creatinine", "VALUEUOM_creatinine", "FLAG_creatinine")

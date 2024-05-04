@@ -49,11 +49,16 @@ colnames(ethn) <- cbind('SUBJECT_ID', 'ETHNICITY')
 ethn <- ethn[!duplicated(ethn), ]
 rownames(ethn) <- seq(1, nrow(ethn), by=1)
 
-write.csv(gender, "gender.csv")
-write.csv(age, "age.csv")
-write.csv(ethn, "ethnicity.csv")
 ```
 
+```{r}
+age_new <- age
+id_300_idx <- which(age_new$AGE == 300)
+age_new$AGE[id_300_idx] <- 'N/A'
+
+id_0_idx <- which(age_new$AGE == 0)
+age_new$AGE[id_0_idx] <- '<1'
+```
 
 ```{r}
 ethn_new <- ethn 
@@ -69,20 +74,38 @@ for (i in 1:nrow(ethn_new)){
   if (substr(ethn_new$ETHNICITY[i], 1, 5) == "WHITE"){
     ethn_new$ETHNICITY[i] <- "WHITE"
   }
+  if (substr(ethn_new$ETHNICITY[i], 1, 5) == "BLACK"){
+    ethn_new$ETHNICITY[i] <- "BLACK"
+  }
+  if (substr(ethn_new$ETHNICITY[i], 1, 29) == "AMERICAN INDIAN/ALASKA NATIVE"){
+    ethn_new$ETHNICITY[i] <- "AMERICAN INDIAN/ALASKA NATIVE"
+  }
+  if (ethn_new$ETHNICITY[i] == "MIDDLE EASTERN"){
+    ethn_new$ETHNICITY[i] <- "WHITE"
+  }
+  if (ethn_new$ETHNICITY[i] == "PORTUGUESE"){
+    ethn_new$ETHNICITY[i] <- "WHITE"
+  }
   
 }
 
 ethn_new <- unique(ethn_new)
-
+  
   
 ```
 
 ```{r}
-mean_age <- mean(age$AGE)
-std_age <- sd(age$AGE)
-range_age <- range(age$AGE)
+write.csv(gender, "gender.csv")
+write.csv(age_new, "age.csv")
+write.csv(ethn_new, "ethnicity.csv")
 ```
 
+```{r}
+age_nonval_idx <- which(data.frame(is.na(as.numeric(age_new$AGE)))[,1] == "TRUE")
+mean_age <- mean(as.numeric(age_new[-age_nonval_idx,]$AGE))
+std_age <- sd(as.numeric(age_new[-age_nonval_idx,]$AGE))
+range_age <- range(as.numeric(age_new[-age_nonval_idx,]$AGE))
+```
 
 ```{r}
 gender_freq <- data.frame(table(gender$GENDER))
@@ -90,7 +113,7 @@ colnames(gender_freq) <- c('GENDER', 'GENDER_FREQ')
 gender_plot <- ggplot(gender_freq, aes(x = factor(GENDER), y = GENDER_FREQ)) + geom_col(width = 0.4) + xlab('Gender') + ylab('Gender Frequency') + ggtitle('Frequency of patient gender')
 gender_plot
 
-age_freq <- data.frame(table(age$AGE))
+age_freq <- data.frame(table(age_new$AGE))
 colnames(age_freq) <- c('AGE', 'AGE_FREQ')
 age_plot <- ggplot(age_freq, aes(x = factor(AGE), y = AGE_FREQ)) + geom_col(width = 0.7) + scale_x_discrete(guide = guide_axis(n.dodge = 2)) + xlab('Age (years old)') + ylab('Age Frequency') + ggtitle('Frequency of patient age') + theme(axis.text.x = element_text(angle = 0, size = 6))
 age_plot
@@ -180,18 +203,24 @@ write.csv(hospital_data_timefreq, "hospital_data_with_timefreq.csv")
 ```
 
 ```{r}
-hospital_freq <- data.frame(table(hospital_data_timefreq$hospital_admission_freq))
+hospital_data_timefreq_nondup <- hospital_data_timefreq[!duplicated(hospital_data_timefreq[c('SUBJECT_ID')]), ]
+
+icu_data_timefreq_nondup <- icu_data_timefreq[!duplicated(icu_data_timefreq[c('SUBJECT_ID')]), ]
+```
+
+```{r}
+hospital_freq <- data.frame(table(hospital_data_timefreq_nondup$hospital_admission_freq))
 colnames(hospital_freq) <- c('hospital_admissions', 'hospital_freq')
 hospital_freq_plot <- ggplot(hospital_freq, aes(x = factor(hospital_admissions), y = hospital_freq)) + geom_col(width = 0.7)  + xlab('Hospital Admissions (times)') + ylab('Hospital Admission Frequency') + ggtitle('Frequency of patient hospital admissions') + geom_text(aes(label = hospital_freq), vjust = -0.5, colour = "black", size = 2.7)
 hospital_freq_plot
 
-icu_freq <- data.frame(table(icu_data_timefreq$icu_stay_freq))
+icu_freq <- data.frame(table(icu_data_timefreq_nondup$icu_stay_freq))
 colnames(icu_freq) <- c('icu_stays', 'icu_freq')
 icu_freq_plot <- ggplot(icu_freq, aes(x = factor(icu_stays), y = icu_freq)) + geom_col(width = 0.7)  + xlab('ICU Admissions (times)') + ylab('ICU Admission Frequency') + ggtitle('Frequency of patient icu admissions') + geom_text(aes(label = icu_freq), vjust = -0.5, colour = "black", size = 2.7)
 icu_freq_plot
 
 ggsave(filename="hospital_freq_plot.jpg", plot=hospital_freq_plot)
-ggsave(filename="icu_freq_plott.jpg", plot=icu_freq_plot)
+ggsave(filename="icu_freq_plot.jpg", plot=icu_freq_plot)
 ```
 
 ```{r}

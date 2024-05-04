@@ -5,7 +5,6 @@ clear;
 % dirData = dir(fullfile(rootdir, '**/*.dat'));
 
 % load data and store them
-% [signal, Fs, tm] = rdsamp('mitdb/100', 1);
 record = readtable('/Volumes/Drive/mimic3wdb-matched-1.0.physionet.org/matched/matched/RECORDS-waveforms',ReadVariableNames=false, Delimiter='');
 
 % record_1_ex = 'mimic3wdb-matched-1.0.physionet.org/matched/matched/p00/p000107/p000107-2124-01-10-05-53';

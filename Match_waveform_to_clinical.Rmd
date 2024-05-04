@@ -1,0 +1,355 @@
+---
+title: "Match_waveform_to_clinical"
+author: "Jennifer Qu"
+date: "2024-04-28"
+output: html_document
+---
+
+```{r}
+library(readxl)
+library(openxlsx)
+library(dplyr)
+library(stringr)
+library(lubridate)
+library(hms)
+library(DescTools)
+library(eeptools)
+library(data.table)
+library(stringr)
+options(warn=-1) 
+```
+
+```{r}
+# get the list of files that has arterial blood pressure measurements
+files_list <- data.frame(list.files(path = "/Volumes/Drive/waveform_data_mat",
+                            recursive = TRUE,
+                            pattern = "\\.mat$"))
+
+colnames(files_list) <- 'FILES_LIST'
+```
+
+```{r}
+# get the patient ID for patients who has arterial blood pressure measurements
+slash_idx <- str_locate(files_list$FILES_LIST, "-")
+subject_ID <- data.frame(substr(files_list$FILES_LIST, 1, slash_idx-1))
+colnames(subject_ID) <- 'SUBJECT_ID'
+
+# remove duplicate
+subject_ID <- unique(subject_ID)
+```
+
+```{r}
+write.csv(subject_ID, "subject_id_waveform.csv")
+```
+
+```{r}
+subject_ID <- read.csv("subject_id_waveform.csv")
+subject_ID <- subject_ID[-1]
+```
+
+```{r}
+# Load file
+icu_stays <- read.csv('../MIMIC/ICUSTAYS.csv/ICUSTAYS.csv')
+admission <- read.csv('../MIMIC/ADMISSIONS.csv/ADMISSIONS.csv')
+patients <- read.csv('../MIMIC/PATIENTS.csv/PATIENTS.csv')
+```
+
+```{r}
+waveform_hospital <- data.frame(matrix(ncol = 19, nrow = 0))
+for (i in 1:nrow(subject_ID)){
+  # find the index in hospital admission and icu stays that include the subject ID 
+  id_temp <- subject_ID$SUBJECT_ID[i]
+  id_temp_idx <- which(admission$SUBJECT_ID == id_temp)
+  
+  # get the row and save
+  waveform_hospital <- rbind(waveform_hospital, admission[id_temp_idx,])
+}
+
+rownames(waveform_hospital) <- 1:nrow(waveform_hospital)
+
+```
+
+```{r}
+write.csv(waveform_hospital, "waveform_hospital.csv")
+```
+
+```{r}
+waveform_icu <- data.frame(matrix(ncol = 12, nrow = 0))
+for (i in 1:nrow(subject_ID)){
+  # find the index in admission that include the subject ID 
+  id_temp <- subject_ID$SUBJECT_ID[i]
+  id_temp_idx <- which(icu_stays$SUBJECT_ID == id_temp)
+  
+  # get the row and save
+  waveform_icu <- rbind(waveform_icu, icu_stays[id_temp_idx,])
+}
+
+rownames(waveform_icu) <- 1:nrow(waveform_icu)
+
+```
+
+```{r}
+write.csv(waveform_icu, "waveform_icu.csv")
+```
+
+```{r}
+waveform_patient <- data.frame(matrix(ncol = 8, nrow = 0))
+for (i in 1:nrow(subject_ID)){
+  # find the index in admission that include the subject ID 
+  id_temp <- subject_ID$SUBJECT_ID[i]
+  id_temp_idx <- which(patients$SUBJECT_ID == id_temp)
+  
+  # get the row and save
+  waveform_patient <- rbind(waveform_patient, patients[id_temp_idx,])
+}
+
+rownames(waveform_patient) <- 1:nrow(waveform_patient)
+
+```
+
+```{r}
+write.csv(waveform_patient, "waveform_patient.csv")
+```
+
+```{r}
+# patient exploration (age, gender, ethnicity)
+gender <- data.frame(cbind(waveform_patient$SUBJECT_ID , waveform_patient$GENDER))
+colnames(gender) <- c('SUBJECT_ID', 'GENDER')
+
+admission_dates <- data.frame(cbind(waveform_hospital$SUBJECT_ID, waveform_hospital$ADMITTIME)) #THERE ARE MUTIPLE HOSPITAL ADMISSIONS FOR SOME PATIENTS
+colnames(admission_dates) <- cbind('SUBJECT_ID', 'ADMIT_DATE')
+admission_dates$ADMIT_DATE <- as.Date(admission_dates$ADMIT_DATE)
+admission_dates_new <- setDT(admission_dates)[order(admission_dates$ADMIT_DATE), head(.SD, 1L), by = SUBJECT_ID] # only the first hospital admission is kept
+
+dob <- data.frame(cbind(waveform_patient$SUBJECT_ID, waveform_patient$DOB))
+colnames(dob) <- c('SUBJECT_ID', 'DOB')
+dob$DOB <- as.Date(dob$DOB)
+
+dates <- merge(admission_dates_new, dob, by = "SUBJECT_ID")
+age <- data.frame(age_calc(dates$DOB, dates$ADMIT_DATE, units = "years"))
+age <- data.frame(cbind(dates$SUBJECT_ID, age))
+colnames(age) <- c('SUBJECT_ID', 'AGE')
+age$AGE <- floor(as.numeric(age$AGE))
+
+ethn <- data.frame(cbind(waveform_hospital$SUBJECT_ID, waveform_hospital$ETHNICITY))
+colnames(ethn) <- cbind('SUBJECT_ID', 'ETHNICITY')
+ethn <- ethn[!duplicated(ethn), ]
+rownames(ethn) <- seq(1, nrow(ethn), by=1)
+
+```
+
+```{r}
+age_new <- age
+id_300_idx <- which(age_new$AGE == 300)
+age_new$AGE[id_300_idx] <- 'N/A'
+
+id_0_idx <- which(age_new$AGE == 0)
+age_new$AGE[id_0_idx] <- '<1'
+```
+
+```{r}
+ethn_new <- ethn 
+for (i in 1:nrow(ethn_new)){
+  if (substr(ethn_new$ETHNICITY[i], 1, 5) == "ASIAN"){
+    ethn_new$ETHNICITY[i] <- "ASIAN"
+  }
+  
+  if (substr(ethn_new$ETHNICITY[i], 1, 15) == "HISPANIC/LATINO"){
+    ethn_new$ETHNICITY[i] <- "HISPANIC OR LATINO"
+  }
+  
+  if (substr(ethn_new$ETHNICITY[i], 1, 5) == "WHITE"){
+    ethn_new$ETHNICITY[i] <- "WHITE"
+  }
+  if (substr(ethn_new$ETHNICITY[i], 1, 5) == "BLACK"){
+    ethn_new$ETHNICITY[i] <- "BLACK"
+  }
+  if (ethn_new$ETHNICITY[i] == "MIDDLE EASTERN"){
+    ethn_new$ETHNICITY[i] <- "WHITE"
+  }
+  if (ethn_new$ETHNICITY[i] == "PORTUGUESE"){
+    ethn_new$ETHNICITY[i] <- "WHITE"
+  }
+  
+}
+
+ethn_new <- unique(ethn_new)
+  
+```
+
+```{r}
+write.csv(gender, "waveform_gender.csv")
+write.csv(age_new, "waveform_age.csv")
+write.csv(ethn_new, "waveform_ethnicity.csv")
+```
+
+```{r}
+age_nonval_idx <- which(data.frame(is.na(as.numeric(age_new$AGE)))[,1] == "TRUE")
+mean_age <- mean(as.numeric(age_new[-age_nonval_idx,]$AGE))
+std_age <- sd(as.numeric(age_new[-age_nonval_idx,]$AGE))
+range_age <- range(as.numeric(age_new[-age_nonval_idx,]$AGE))
+```
+
+```{r}
+gender_freq <- data.frame(table(gender$GENDER))
+colnames(gender_freq) <- c('GENDER', 'GENDER_FREQ')
+gender_plot <- ggplot(gender_freq, aes(x = factor(GENDER), y = GENDER_FREQ)) + geom_col(width = 0.4) + xlab('Gender') + ylab('Gender Frequency') + ggtitle('Frequency of patient gender')
+gender_plot
+
+age_freq <- data.frame(table(age_new$AGE))
+colnames(age_freq) <- c('AGE', 'AGE_FREQ')
+age_plot <- ggplot(age_freq, aes(x = factor(AGE), y = AGE_FREQ)) + geom_col(width = 0.7) + scale_x_discrete(guide = guide_axis(n.dodge = 2)) + xlab('Age (years old)') + ylab('Age Frequency') + ggtitle('Frequency of patient age') + theme(axis.text.x = element_text(angle = 0, size = 6))
+age_plot
+
+ethn_freq <- data.frame(table(ethn_new$ETHNICITY))
+colnames(ethn_freq) <- c('ETHN', 'ETHN_FREQ')
+ethn_plot <- ggplot(ethn_freq, aes(x = factor(ETHN), y = ETHN_FREQ)) + geom_col(width = 0.4) + xlab('Ethnicity') + ylab('Ethnicity Frequency') + ggtitle('Frequency of patient ethnicity') + theme(axis.text.x = element_text(angle = 90, vjust = 0.1, hjust = 0.3), text = element_text(size = 8)) + scale_x_discrete(labels = function(x) str_wrap(x, width = 17)) 
+ethn_plot
+
+ggsave(filename="waveform_gender_plot.jpg", plot=gender_plot)
+ggsave(filename="waveform_age_plot.jpg", plot=age_plot)
+ggsave(filename="waveform_ethnicity_plot.jpg", plot=ethn_plot)
+
+```
+
+```{r}
+# hospital admission / person
+# extract subject ID
+hospital_subject_id <- data.frame(waveform_hospital$SUBJECT_ID)
+colnames(hospital_subject_id) <- 'SUBJECT_ID'
+unique_hospital_admission <- data.frame(table(hospital_subject_id))
+colnames(unique_hospital_admission) <- c('SUBJECT_ID', 'hospital_admission_freq')
+
+hospital_unique_patient <- unique(hospital_subject_id)
+hospitaladmission <- unique(waveform_hospital$HADM_ID)
+
+```
+
+```{r}
+# ICU stays / person
+# extract subject ID
+icu_subject_id <- data.frame(waveform_icu$SUBJECT_ID)
+colnames(icu_subject_id) <- 'SUBJECT_ID'
+
+unique_icu_stay <- data.frame(table(icu_subject_id))
+colnames(unique_icu_stay) <- c('SUBJECT_ID', 'icu_stay_freq')
+
+icu_patient_number <- unique(icu_subject_id)
+```
+
+```{r}
+# extract subject ID, ADMITTIME, DISCHTIME
+hospital_admission_id <- waveform_hospital$HADM_ID
+hospital_admission_id <- data.frame(hospital_admission_id)
+hospital_admission_time <- waveform_hospital$ADMITTIME
+hospital_admission_time <- data.frame(hospital_admission_time)
+hospital_discharge_time <- waveform_hospital$DISCHTIME
+hospital_discharge_time <- data.frame(hospital_discharge_time)
+
+# length of hospital admission
+hospital_discharge <- strptime(hospital_discharge_time$hospital_discharge_time, "%Y-%m-%d %H:%M:%S")
+hospital_start <- strptime(hospital_admission_time$hospital_admission_time, "%Y-%m-%d %H:%M:%S")
+hospital_admission_length <- data.frame(as.numeric(difftime(hospital_discharge, hospital_start), units = "secs"))
+colnames(hospital_admission_length) <- 'hospital_admission_length'
+hospital_admission_length <- data.frame(as.character(seconds_to_period(hospital_admission_length$hospital_admission_length)))
+colnames(hospital_admission_length) <- 'hospital_admission_length'
+
+hospital_data <- cbind(hospital_subject_id, hospital_admission_id, hospital_admission_time, hospital_discharge_time, hospital_admission_length)
+
+hospital_data_timefreq <- merge(hospital_data, unique_hospital_admission, by = "SUBJECT_ID")
+write.csv(hospital_data_timefreq, "waveform_hospital_with_timefreq.csv")
+```
+
+```{r}
+# extract ICU start and stop time
+icu_stay_id <- waveform_icu$ICUSTAY_ID
+icu_stay_id <- data.frame(icu_stay_id)
+icu_admission_start_time <- waveform_icu$INTIME
+icu_admission_start_time <- data.frame(icu_admission_start_time)
+icu_admission_stop_time <- waveform_icu$OUTTIME
+icu_admission_stop_time <- data.frame(icu_admission_stop_time)
+
+# length of each ICU stay
+icu_stop <- strptime(icu_admission_stop_time$icu_admission_stop_time, "%Y-%m-%d %H:%M:%S")
+icu_start <- strptime(icu_admission_start_time$icu_admission_start_time, "%Y-%m-%d %H:%M:%S")
+icu_admission_length <- data.frame(as.numeric(difftime(icu_stop, icu_start), units = "secs"))
+colnames(icu_admission_length) <- 'icu_admission_length'
+icu_admission_length <- data.frame(as.character(seconds_to_period(icu_admission_length$icu_admission_length)))
+colnames(icu_admission_length) <- 'icu_admission_length'
+
+icu_data <- cbind(icu_subject_id, icu_stay_id, icu_admission_start_time, icu_admission_stop_time, icu_admission_length)
+
+icu_data_timefreq <- merge(icu_data, unique_icu_stay, by = "SUBJECT_ID")
+write.csv(icu_data_timefreq, "waveform_icu_with_timefreq.csv")
+```
+
+```{r}
+hospital_data_timefreq_nondup <- hospital_data_timefreq[!duplicated(hospital_data_timefreq[c('SUBJECT_ID')]), ]
+
+icu_data_timefreq_nondup <- icu_data_timefreq[!duplicated(icu_data_timefreq[c('SUBJECT_ID')]), ]
+```
+
+```{r}
+hospital_freq <- data.frame(table(hospital_data_timefreq_nondup$hospital_admission_freq))
+colnames(hospital_freq) <- c('hospital_admissions', 'hospital_freq')
+hospital_freq_plot <- ggplot(hospital_freq, aes(x = factor(hospital_admissions), y = hospital_freq)) + geom_col(width = 0.7)  + xlab('Hospital Admissions (times)') + ylab('Hospital Admission Frequency') + ggtitle('Frequency of patient hospital admissions') + geom_text(aes(label = hospital_freq), vjust = -0.5, colour = "black", size = 2.7)
+hospital_freq_plot
+
+icu_freq <- data.frame(table(icu_data_timefreq_nondup$icu_stay_freq))
+colnames(icu_freq) <- c('icu_stays', 'icu_freq')
+icu_freq_plot <- ggplot(icu_freq, aes(x = factor(icu_stays), y = icu_freq)) + geom_col(width = 0.7)  + xlab('ICU Admissions (times)') + ylab('ICU Admission Frequency') + ggtitle('Frequency of patient ICU admissions') + geom_text(aes(label = icu_freq), vjust = -0.5, colour = "black", size = 2.7)
+icu_freq_plot
+
+ggsave(filename="waveform_hospital_freq_plot.jpg", plot=hospital_freq_plot)
+ggsave(filename="waveform_icu_freq_plot.jpg", plot=icu_freq_plot)
+```
+
+```{r}
+combined_data <- merge(hospital_data_timefreq, icu_data_timefreq, by = "SUBJECT_ID")
+write.csv(combined_data, "waveform_hospital_icu_data.csv")
+
+```
+
+```{r}
+combine_creatinine_data <- read.csv("combine_creatinine_data.csv")
+combine_creatinine_data <- combine_creatinine_data[-1]
+```
+
+```{r}
+waveform_combine_creatinine_data <- data.frame(matrix(ncol = 8, nrow = 0))
+for (i in 1:nrow(subject_ID)){
+  # find the index in hospital admission and icu stays that include the subject ID 
+  id_temp <- subject_ID$SUBJECT_ID[i]
+  id_temp_idx <- which(combine_creatinine_data$SUBJECT_ID == id_temp)
+  
+  # get the row and save
+  waveform_combine_creatinine_data <- rbind(waveform_combine_creatinine_data, combine_creatinine_data[id_temp_idx,])
+}
+
+rownames(waveform_combine_creatinine_data) <- 1:nrow(waveform_combine_creatinine_data)
+
+```
+
+```{r}
+id_808_idx <- which(as.numeric(waveform_combine_creatinine_data$VALUE) > 50)
+waveform_combine_creatinine_data$VALUE[id_808_idx] <- 'N/A'
+waveform_combine_creatinine_data$VALUENUM[id_808_idx] <- 'N/A'
+```
+
+```{r}
+write.csv(waveform_combine_creatinine_data, "waveform_combine_creatinine_data.csv")
+```
+
+```{r}
+waveform_combine_creatinine_data <- read.csv("waveform_combine_creatinine_data.csv")
+waveform_combine_creatinine_data <- waveform_combine_creatinine_data[-1]
+```
+
+```{r}
+# remove non-numeric values in combine creatinine measurements
+# calculate mean, SD, range of creatinine measurements
+creatinine_nonval_idx <- which(data.frame(is.na(as.numeric(waveform_combine_creatinine_data$VALUE)))[,1] == "TRUE")
+mean_creatinine <- mean(as.numeric(waveform_combine_creatinine_data[-creatinine_nonval_idx,]$VALUE))
+std_creatinine <- sd(as.numeric(waveform_combine_creatinine_data[-creatinine_nonval_idx,]$VALUE))
+range_creatinine <- range(as.numeric(waveform_combine_creatinine_data[-creatinine_nonval_idx,]$VALUE))
+```

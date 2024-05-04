@@ -8,6 +8,7 @@ This project is to manage the MIMIC-III dataset to engineer the waveform cohort 
 
 This repository includes code, tables, and figures. 
 Code: 
+
 "Data_descriptions.Rmd" 
 * the code includes the demographics for MIMIC-III patient (gender, age, and ethnicity)
 * the code includes the tables for hospital admissions and ICU stays, frequencies for each number of hospital admissions and ICU stays

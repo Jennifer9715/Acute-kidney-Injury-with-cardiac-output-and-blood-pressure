@@ -25,7 +25,11 @@ Code:
 "Match_waveform_to_clinical.m"
 * the code get the patient ID for patients who has arterial blood pressure measurements
 * the code filters the hospital admissions, ICU stays, and patient information for patients who has arterial blood pressure measurements
-* the code generates "subject_id_waveform.csv", "waveform_hospital.csv", "waveform_icu.csv", "waveform_patient.csv"
+* the code inlcudes the demographics for matched waveform cohort (gender, age, and ethnicity)
+* the code includes the tables for hospital admissions, and ICU stays, frequencies for each number of hospital admissions and ICU stays for the matched cohort
+* the code includes the creatinine with serum creatinine measurements with mean, standard deviation, and range for the matched cohort
+* the code includes the combined table which includes both creatinine measurements, hospital admissions, ICU stays, and whether the measurement for creatinine was taken within 4 hours of the ICU admission's range for the matched cohort 
+* the code generates "subject_id_waveform.csv", "waveform_hospital.csv", "waveform_icu.csv", "waveform_patient.csv", "waveform_gender.csv", "waveform_age.csv", "waveform_ethnicity.csv", "waveform_gender_plot.jpg", "waveform_age_plot.jpg", "waveform_ethnicity_plot.jpg", "waveform_hospital_with_timefreq.csv", "waveform_icu_with_timefreq.csv", "waveform_hospital_freq_plot.jpg", "waveform_icu_freq_plot.jpg", "waveform_combine_creatinine_data.csv"
   
 
 
